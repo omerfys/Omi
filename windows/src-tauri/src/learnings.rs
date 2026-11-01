@@ -1,6 +1,5 @@
 // Persistent learning and user procedures / preferences for Omi.
-// Stored in %APPDATA%\Coucou\learned_rules.json (or Linux ~/.config/coucou).
-// Injected into system prompts for both voice assistant and chat so Omi remembers
+// Stored in %APPDATA%\omi\learned_rules.json (or Linux ~/.config/omi).
 // user-confirmed methods and avoids trial-and-error / token waste.
 
 use std::path::PathBuf;

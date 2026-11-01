@@ -1,6 +1,5 @@
 // Calendar and daily planner storage for Coucou / Omi.
-// Saves tasks and events to %APPDATA%\Coucou\calendar.json.
-
+// Saves tasks and events to %APPDATA%\omi\calendar.json.
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;

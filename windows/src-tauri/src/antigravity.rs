@@ -1,5 +1,5 @@
 // Google Antigravity OAuth and Chat integration for Coucou / Omi.
-// Completely independent from OMP: stores its own accounts in %APPDATA%\Coucou\antigravity_accounts.json,
+// Completely independent from OMP: stores its own accounts in %APPDATA%\omi\antigravity_accounts.json,
 // manages its own OAuth token refresh, and chats directly via Google Cloud Code Assist SSE API.
 
 use std::path::PathBuf;
@@ -52,12 +52,12 @@ fn now_millis() -> i64 {
         .unwrap_or(0)
 }
 
-/// Coucou's own private accounts file: %APPDATA%\Coucou\antigravity_accounts.json
+/// Omi's own private accounts file: %APPDATA%\omi\antigravity_accounts.json
 fn accounts_path() -> PathBuf {
     crate::platform::config_dir().join("antigravity_accounts.json")
 }
 
-/// Loads accounts from Coucou's private storage (%APPDATA%\Coucou\antigravity_accounts.json).
+/// Loads accounts from Omi's private storage (%APPDATA%\omi\antigravity_accounts.json).
 /// Returns an empty list by default if no accounts have been added yet.
 pub fn list_accounts() -> Result<Vec<AntigravityAccount>, String> {
     let path = accounts_path();
@@ -84,7 +84,7 @@ fn dirs_next() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("."))
 }
 
-/// Saves accounts into %APPDATA%\Coucou\antigravity_accounts.json only.
+/// Saves accounts into %APPDATA%\omi\antigravity_accounts.json only.
 fn save_accounts(accounts: &[AntigravityAccount]) -> Result<(), String> {
     let path = accounts_path();
     if let Some(parent) = path.parent() {
@@ -618,7 +618,7 @@ async fn ensure_token(account: &mut AntigravityAccount) -> Result<(), String> {
 }
 
 /// Starts the Google OAuth 2.0 flow:
-/// Saves only to Coucou's private storage (%APPDATA%\Coucou\antigravity_accounts.json).
+/// Saves only to Omi's private storage (%APPDATA%\omi\antigravity_accounts.json).
 pub async fn start_oauth_login(app: &AppHandle) -> Result<String, String> {
     let auth_url = format!(
         "https://accounts.google.com/o/oauth2/v2/auth?\

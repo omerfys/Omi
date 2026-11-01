@@ -52,20 +52,34 @@ const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 // ── Files ─────────────────────────────────────────────────────────────────────
 
-/// %APPDATA%\Coucou — preferences.
+/// %APPDATA%\omi — preferences and accounts.
 pub fn config_dir() -> PathBuf {
     let base = std::env::var_os("APPDATA")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("."));
-    base.join("Coucou")
+    let new_dir = base.join("omi");
+    let old_dir = base.join("Coucou");
+    // Auto-migrate from old %APPDATA%\Coucou if new %APPDATA%\omi does not exist yet
+    if !new_dir.exists() && old_dir.exists() {
+        let _ = std::fs::create_dir_all(&new_dir);
+        if let Ok(entries) = std::fs::read_dir(&old_dir) {
+            for entry in entries.flatten() {
+                let target = new_dir.join(entry.file_name());
+                if !target.exists() {
+                    let _ = std::fs::copy(entry.path(), target);
+                }
+            }
+        }
+    }
+    new_dir
 }
 
-/// %LOCALAPPDATA%\Coucou — where coucou-hook.exe, the inbox and the log live.
+/// %LOCALAPPDATA%\omi — where coucou-hook.exe, the inbox and the log live.
 pub fn local_dir() -> PathBuf {
     let base = std::env::var_os("LOCALAPPDATA")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("."));
-    base.join("Coucou")
+    base.join("omi")
 }
 
 /// Where a saved image goes, best first: Pictures (also where OneDrive moves

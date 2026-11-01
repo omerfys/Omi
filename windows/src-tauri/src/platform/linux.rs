@@ -39,16 +39,27 @@ fn xdg(var: &str, fallback: &str) -> PathBuf {
         .unwrap_or_else(|| home_dir().join(fallback))
 }
 
-/// ~/.config/coucou — preferences.
+/// ~/.config/omi — preferences and accounts.
 pub fn config_dir() -> PathBuf {
-    xdg("XDG_CONFIG_HOME", ".config").join("coucou")
+    let new_dir = xdg("XDG_CONFIG_HOME", ".config").join("omi");
+    let old_dir = xdg("XDG_CONFIG_HOME", ".config").join("coucou");
+    if !new_dir.exists() && old_dir.exists() {
+        let _ = std::fs::create_dir_all(&new_dir);
+        if let Ok(entries) = std::fs::read_dir(&old_dir) {
+            for entry in entries.flatten() {
+                let target = new_dir.join(entry.file_name());
+                if !target.exists() {
+                    let _ = std::fs::copy(entry.path(), target);
+                }
+            }
+        }
+    }
+    new_dir
 }
 
-/// ~/.local/share/coucou — where coucou-hook, the inbox and the log live. The
-/// relay has to sit at a stable path: an AppImage is mounted somewhere new on
-/// every launch.
+/// ~/.local/share/omi — where coucou-hook, the inbox and the log live.
 pub fn local_dir() -> PathBuf {
-    xdg("XDG_DATA_HOME", ".local/share").join("coucou")
+    xdg("XDG_DATA_HOME", ".local/share").join("omi")
 }
 
 /// Where a saved image goes, best first: the XDG pictures folder named in
