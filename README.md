@@ -38,33 +38,33 @@ Whether you're developing with Claude Code, Google Antigravity, or local LLMs, O
 
 A comprehensive visual overview of Omi's floating dynamic island, productivity cards, and management dashboard:
 
-| Feature / Modül | Preview / Görsel | Açıklama / Description |
+| Feature | Preview | Description |
 |:---|:---:|:---|
-| **Dynamic Island (Compact)** | <img src="docs/media/omi-island-compact.png" width="340" alt="Omi Compact Island" /> | **Kompakt Tepe Adası:** Ekranda sıfır yer kaplayan, dinamik bildirimler ve agent aktivitelerinde yumuşakça genişleyen floating ada. |
-| **Hızlı Kontroller & Model Durumu** | <img src="docs/media/omi-island-controls.png" width="340" alt="Omi Quick Controls" /> | **Quick Controls & Engine Status:** Ses seviyesi, otomatik kapanma zamanlayıcısı, Google Antigravity ve yerel model aktiflik takibi. |
-| **Sistem Monitörü & Medya Hub** | <img src="docs/media/omi-island-widgets.png" width="340" alt="Omi Multi-Widget" /> | **Multi-Widget & Live Integrations:** VS Code CPU/RAM monitörü, Cursor / GitHub / Notion / Antigravity köprüsü ve WinRT medya oynatıcı. |
-| **Ekran İşaretleme & Görsel Stüdyo** | <img src="docs/media/omi-island-markup.png" width="340" alt="Omi Screen Markup Studio" /> | **Screen Markup & Screenshot Studio:** Alan seçimi veya tam ekran yakalama, çizim/ok/kalem araçlarıyla işaretleme ve tek tıkla Chat'e aktarım. |
-| **Sürükle-Bırak Dosya Paylaşımı** | <img src="docs/media/omi-island-filedrop.png" width="340" alt="Omi Drag and Drop Files" /> | **Drag & Drop Knowledge Hub:** PDF, görsel, kaynak kod ve dokümanları doğrudan adaya bırakarak anında context aktarımı. |
-| **Müzik Dedektifi (Music Detective)** | <img src="docs/media/omi-island-music.png" width="340" alt="Omi Music Detective" /> | **Music Detective & SMTC:** Arka planda veya ortamda çalan şarkıları tek dokunuşla tespit etme ve WinRT SMTC senkronizasyonu. |
-| **Ajanda & Görev Planlayıcı** | <img src="docs/media/omi-island-agenda.png" width="340" alt="Omi Agenda and Planner" /> | **Agenda & Task Planner:** Hızlı görev ekleme, takvim görünümü ve günlük hedef tamamlanma ilerleme çubuğu. |
-| **Omi Maskot Gardırobu (Wardrobe)** | <img src="docs/media/omi-island-wardrobe.png" width="340" alt="Omi Wardrobe Customization" /> | **Companion Customization:** Omi maskotu için gözlükler, şapkalar, tematik kostümler ve mevsimsel kişiselleştirmeler. |
-| **Modern Glassmorphism Hub** | <img src="docs/media/omi-settings-dashboard.png" width="340" alt="Omi Settings Hub" /> | **Settings & Hardware Preferences:** Yarı saydam cam paneller, ekran analizi, GPU hızlandırma ve tam Türkçe/İngilizce dil desteği. |
+| **Dynamic Island (Compact)** | <img src="docs/media/omi-island-compact.png" width="340" alt="Omi Compact Island" /> | **Compact Floating Island:** Zero screen clutter with zero idle CPU; smoothly expands on active notifications and agent events. |
+| **Quick Controls & Model Status** | <img src="docs/media/omi-island-controls.png" width="340" alt="Omi Quick Controls" /> | **Quick Controls & Engine Status:** Master volume slider, auto-close timer, Google Antigravity account status, and local model indicators. |
+| **System Monitor & Media Hub** | <img src="docs/media/omi-island-widgets.png" width="340" alt="Omi Multi-Widget" /> | **Multi-Widget & Live Integrations:** Real-time VS Code CPU/RAM telemetry, Cursor / GitHub / Notion / Antigravity bridge, and WinRT media transport. |
+| **Screen Markup & Visual Studio** | <img src="docs/media/omi-island-markup.png" width="340" alt="Omi Screen Markup Studio" /> | **Screen Markup & Screenshot Studio:** Region or full-display capture, arrow/rectangle/pen annotations, and instant one-click export into Chat. |
+| **Drag-and-Drop Knowledge Drop** | <img src="docs/media/omi-island-filedrop.png" width="340" alt="Omi Drag and Drop Files" /> | **Drag & Drop Knowledge Hub:** Ingest PDFs, images, source code files, and documents directly onto the island for immediate context ingestion. |
+| **Music Detective** | <img src="docs/media/omi-island-music.png" width="340" alt="Omi Music Detective" /> | **Music Detective & SMTC:** One-tap acoustic song recognition for ambient and background music with native WinRT SMTC synchronization. |
+| **Agenda & Task Planner** | <img src="docs/media/omi-island-agenda.png" width="340" alt="Omi Agenda and Planner" /> | **Agenda & Task Planner:** Rapid task creation, visual calendar view, and dynamic daily goal completion progress tracking. |
+| **Companion Mascot Wardrobe** | <img src="docs/media/omi-island-wardrobe.png" width="340" alt="Omi Wardrobe Customization" /> | **Companion Customization:** Glasses, hats, crowns, festive outfits, and seasonal customizations for the Omi mascot. |
+| **Modern Glassmorphism Hub** | <img src="docs/media/omi-settings-dashboard.png" width="340" alt="Omi Settings Hub" /> | **Settings & Hardware Preferences:** Frosted glass panels, screen capture & vision tuning, GPU acceleration, and full Turkish/English localization. |
 
 ---
 
 ## Key Capabilities
 
-### 1. Floating Island Quick Controls & Settings (Hızlı Ada Ayarları)
+### 1. Floating Island Quick Controls & Settings
 Floating seamlessly at the top of your primary display, Omi's quick controls give you immediate access to essential assistant preferences and model connectivity:
 
 <div align="center">
   <img src="docs/media/omi-island-controls.png" width="75%" alt="Omi Island Quick Controls & Settings" style="border-radius: 10px;" />
 </div>
 
-- **Master Ses & Feedback Volume:** Anlık ses slider'ı ve tek tıkla sessize alma (mute) anahtarı ile asistan ses seviyesi kontrolü.
-- **Auto-Close Timer (Otomatik Kapanma):** Adanın açık kalma süresini ihtiyacınıza göre yapılandırın (`10s`, `15s`, `30s` veya daima görünür kalması için `Off`).
-- **Canlı Model & Hesap Durumu:** Bağlı aktif Google Antigravity hesabı ve yerel offline modelin çalışma durumu hakkında gerçek zamanlı göstergeler.
-- **Doğrudan Ayarlar Erişimi:** Detaylı sistem, ekran analizi ve kısayol konfigürasyonları için tek tıkla ana kontrol paneline geçiş.
+- **Master Volume & Audio Feedback:** Real-time volume slider and one-click mute toggle for speech and UI sounds.
+- **Auto-Close Timer:** Configure how long the expanded island remains visible before folding back (`10s`, `15s`, `30s`, or `Off` to stay permanently open).
+- **Live Model & Account Status:** Real-time visual telemetry for active Google Antigravity accounts and offline local models.
+- **Direct Settings Navigation:** Instant one-click shortcut to launch the full glassmorphic preferences dashboard.
 
 ### 2. Conversational Voice Assistant & Wake Word
 - **"Hey Omi" Voice Activation:** Hands-free background wake word spotter with zero CPU waste.
