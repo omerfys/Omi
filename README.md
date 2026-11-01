@@ -7,6 +7,9 @@
 **Next-Generation AI Desktop Companion, Autonomous Coding Island & Voice Assistant**
 
 *A sleek floating workspace island powered by Tauri 2, Rust & TypeScript. Combines real-time Google Antigravity voice conversations, autonomous vision-driven computer-use loops, modular glassmorphism control hub, and multi-provider agent orchestration.*
+<p align="center">
+  <a href="README.tr.md">🇹🇷 Türkçe</a> • <b>🇺🇸 English</b>
+</p>
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Windows%2010%2F11%20%7C%20Linux-0078D4?style=flat-square&logo=windows&logoColor=white)](https://github.com/omerfys/Omi)
@@ -162,7 +165,7 @@ A unified frosted glass dashboard for complete control over behaviors, displays,
 
 2. **One-Click Launch (Windows):**
    ```cmd
-   start-omi.bat
+   start.bat
    ```
    *Automatically sets up environment, clears stale processes, and starts Omi.*
 
