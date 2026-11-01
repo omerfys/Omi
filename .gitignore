@@ -41,6 +41,11 @@ windows/target-temp/
 
 # Local AI accounts, credentials, backups, and sqlite databases
 *accounts*.json
+*credential*.json
+*credentials*.json
+client_secret*.json
+learned_rules*.json
+*.credentials
 !package.json
 !*strings*.json
 !*extra*.json

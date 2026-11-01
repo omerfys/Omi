@@ -31,7 +31,7 @@ Whether you're developing with Claude Code, Google Antigravity, or local LLMs, O
 
 ---
 
-## Visual Showcase (Arayüz Galerisi)
+## Visual Showcase
 
 A comprehensive visual overview of Omi's floating dynamic island, productivity cards, and management dashboard:
 

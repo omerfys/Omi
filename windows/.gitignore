@@ -17,6 +17,12 @@ src-tauri/gen/schemas/
 !.env.example
 
 # Local AI accounts, credentials, and databases
+*accounts*.json
+*credential*.json
+*credentials*.json
+client_secret*.json
+learned_rules*.json
+*.credentials
 antigravity_accounts*.json
 omi_accounts*.json
 *.db
