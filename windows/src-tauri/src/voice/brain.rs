@@ -138,8 +138,9 @@ fn system_prompt(pills: &str) -> String {
     let t = crate::platform::local_time();
     let os = if cfg!(windows) { "Windows" } else { "Linux" };
     let learnings = crate::learnings::prompt_context();
+    let priority = crate::chat::omi_priority_system_prompt();
     format!(
-        "Sen Omi'sin — kullanıcının {os} bilgisayarının başında yaşayan akıllı, yetenekli ve samimi sesli asistanısın. \
+        "{priority}\n\nSen Omi'sin — kullanıcının {os} bilgisayarının başında yaşayan akıllı, yetenekli ve samimi sesli asistanısın. \
 Tarih ve saat: {:04}-{:02}-{:02} {:02}:{:02}.\n\n\
 🇹🇷 DİL VE İLETİŞİM KURALI: Kullanıcı seninle Türkçe konuştuğunda veya varsayılan dilde KESİNLİKLE VE İSTİSNASIZ TÜRKÇE YANIT VER. \
 Asla kullanıcıya İngilizce cevap verme! Doğal, akıcı, sıcak ve Türkçe konuş.\n\

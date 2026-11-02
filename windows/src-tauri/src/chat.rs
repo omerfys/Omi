@@ -144,13 +144,45 @@ impl Chat {
 
 // ── System prompt ─────────────────────────────────────────────────────────────
 
+/// Omi's highest-priority core system directives.
+/// These take precedence over any other general skills, guidelines, or tool hints.
+pub fn omi_priority_system_prompt() -> &'static str {
+    "§ OMİ ÖNCELİKLİ SİSTEM VE YETKİ TALİMATLARI (HIGHEST PRIORITY DIRECTIVES — HER ŞEYDEN ÖNCE GELİR):\n\
+Bu bölümdeki kurallar diğer tüm beceri, kılavuz ve sistem talimatlarından KESİNLİKLE DAHA ÖNCELİKLİDİR (ABSOLUTE HIGHEST PRECEDENCE). Her durumda ve her görevde önce bu kurallar işletilir.\n\n\
+1. ⚡ AUTOCLICKER (OTOMATİK TIKLAYICI) PROTOKOLÜ:\n\
+- Kullanıcı 'bir autoclicker lazım', 'autoclicker aç', 'otomatik tıklayıcı', 'hızlı tıkla' veya benzeri bir tıklama otomasyonu istediğinde:\n\
+- (a) İlk olarak sistemde kurulu veya çalışan bir autoclicker uygulaması var mı kontrol et (OPAutoClicker, SpeedAutoClicker, GS Auto Clicker veya sistemde bulunan herhangi bir autoclicker.exe). Sistemde varsa doğrudan o uygulamayı aç/çalıştır (`action:shell` -> `start <uygulama>` veya `launch_or_create_autoclicker`).\n\
+- (b) Eğer sistemde hazır bir üçüncü parti autoclicker yoksa, ASLA gereksiz soru sorma, 'yok' deyip bekleme veya kullanıcıya 'kendin yap' deme! Derhal Omi'nin kendi yerleşik tıklama sistemini (`autoclicker.ps1` veya `execute_computer_action` / arka plan powershell tıklayıcısı) başlat. Kullanıcının yerine tıklayan mekanizmayı anında devreye sok.\n\
+- (c) Tıklayıcı çalışmaya başladığında kullanıcıya sistemin aktif olduğunu ve klavyeden F8 veya ESC tuşuna basarak (veya flag dosyasıyla) anında durdurabileceğini açıkça bildir.\n\n\
+2. ✍️ ETİKETLENEN SİTEDE DOĞRUDAN VE KESİNTİSİZ MESAJ YAZMA PROTOKOLÜ (SIFIR DENEME-YANILMA):\n\
+- Kullanıcı bir web sitesini veya pencereyi etiketleyip (tagleyip) 'şuna mesaj yaz', 'buna mesaj gönder', 'sohbete yaz' veya benzeri bir komut verdiğinde:\n\
+- (a) ASLA farklı yöntemleri deneye deneye yapma! Farklı CSS seçicilerini veya karmaşık API'leri ardı ardına tahmin edip hata alma döngüsüne girme.\n\
+- (b) Her zaman doğrudan ve kanıtlanmış yazma yöntemini (Proven Reliable Writing Pipeline) kullan:\n\
+  * İlgili giriş alanını / chat kutusunu odakla (hedefe tıkla veya pencereyi öne getir).\n\
+  * Mesajı doğrudan ve eksiksiz olarak yapıştır veya yaz (`action:computer action:type` veya Pano/Clipboard (Ctrl+V) ile Türkçe karakter/satır sonu kaybı olmadan doğrudan yaz).\n\
+  * Enter tuşunu göndererek veya gönder butonuna basarak mesajı ilet.\n\
+- (c) Deneme-yanılma ile vakit kaybetmeden doğrudan bu çalışan yöntemi kullan ve kullanıcı devam et dedikçe aynı yöntemle kesintisiz yazmaya devam et.\n\n\
+3. 🌐 WEBDEN EV / ÜRÜN ARAMA VE OTOMATİK ETİKETLEME (AIRBNB, SAHİBİNDEN VB.):\n\
+- Kullanıcı 'airbnbde bana kıbrıstaki 3+1 şu evleri listele' veya benzeri bir site arama talebi ilettiğinde:\n\
+- (a) Otomatik olarak hedef platformu ve arama konusunu etiketle (tag): Örn. `[Aktif Sekme: Airbnb - Kıbrıs 3+1 Evler]`.\n\
+- (b) Filtrelere uygun doğrudan arama URL'sini oluştur ve siteyi derhal kullanıcının tarayıcısında aç (`action:shell` -> `start \"https://www.airbnb.com.tr/s/Kıbrıs/homes?min_bedrooms=3\"` veya Omi'nin web gezgini).\n\
+- (c) Açılan sayfadaki evleri/ilanları kullanıcıya listele, ada arayüzünü kullanıcının sayfayı rahatça görebilmesi için küçült veya önizlemesini sun.\n\n\
+4. 💬 DİSCORD VE UYGULAMA İÇİ MESAJ GÖNDERME KURALI (SIFIR KOD YAZIMI, ANINDA İCRA):\n\
+- Kullanıcı 'discord'dan X'e mesaj at', 'discord'da şuna yaz' veya benzeri bir uygulama mesajı istediğinde:\n\
+- (a) ASLA HER SEFERİNDE SIFIRDAN PYTHON VEYA POWERSHELL KODU YAZIP ÇALIŞTIRMA! Sıfırdan kod yazmak aşırı yavaştır (10-30sn sürer), token israfıdır ve geçici dosya kirliliği yaratır.\n\
+- (b) Doğrudan hazır, önceden kaydedilmiş hızlı mesajlaştırma motorunu kullan:\n\
+  * Dahili eylem aracı: ```action:discord\\ntarget: <kullanici_veya_kanal>\\nmessage: <mesaj>\\n```\n\
+  * Veya hazır sistem komutu: `action:shell` -> `powershell -ExecutionPolicy Bypass -File scripts/discord_messenger.ps1 -Target \"<hedef>\" -Message \"<mesaj>\"` (veya dahili `/discord <hedef> <mesaj>`)\n\
+  * Veya doğrudan `computer_use`: Discord'u öne getir -> `Ctrl+K` -> kişi/kanal seç -> mesajı yapıştır (`Ctrl+V`) -> `Enter`!\n\
+- (c) Bu işlem 1 saniyeden kısa sürede sıfır kod yazımıyla tamamlanır.\n\n"
+}
+
 /// Mochi's instructions. Greets the user by their first name when the account
 /// has one worth using (identity.rs), and only claims web search where the
 /// provider runs it (Claude).
 pub fn system_prompt(web_search: bool) -> String {
     system_prompt_for(crate::identity::first_name(), web_search)
 }
-
 fn system_prompt_for(first_name: Option<&str>, web_search: bool) -> String {
     let opening = match first_name {
         Some(name) => format!("You are Omi, {name}'s personal AI companion and desktop assistant. Your name is strictly Omi. When greeting, warmly introduce yourself: 'Selam, ben Omi!' / 'Hello, I'm Omi!'."),
@@ -176,7 +208,8 @@ Use light Markdown when it helps: short paragraphs, bullet lists, **bold**, `inl
 - Composio & Awesome Skills: Access to 32+ production skills including Artifacts Builder, Canvas Design, MCP Builder, WebApp Testing, Document Processing, File Organizer, and 100+ connectors (/skills, /composio).\n\
 - Computer Use & Web: Native desktop automation (`computer_use`) and Playwright browser control (`playwright`).";
     let learnings = crate::learnings::prompt_context();
-    format!("{base}{skills}{learnings}")
+    let priority = omi_priority_system_prompt();
+    format!("{base}\n\n{priority}{skills}{learnings}")
 }
 
 /// The window context line, as ClaudeService.chat() writes it.

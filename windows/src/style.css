@@ -2017,6 +2017,31 @@ input[type="range"]::-webkit-slider-thumb {
   transform: scale(0.94);
 }
 
+.send-btn.stop {
+  background: var(--ink);
+  color: #0b0c0e;
+  cursor: pointer;
+  box-shadow: 0 0 10px rgba(255, 255, 255, 0.25);
+  animation: pulse-stop 1.8s infinite ease-in-out;
+}
+
+.send-btn.stop:hover {
+  background: #ef4444;
+  color: #ffffff;
+  transform: scale(1.05);
+  box-shadow: 0 0 12px rgba(239, 68, 68, 0.4);
+}
+
+@keyframes pulse-stop {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(0.96);
+    opacity: 0.85;
+  }
+}
 /* ── Drop zone ──────────────────────────────────────────────────────────── */
 
 .drop-card {

@@ -312,7 +312,71 @@ function buildPicker(onChange: () => void): Picker {
 export function buildPrompt(onHeightChange: () => void, actions?: ViewActions): ViewHost {
   const chipRow = h("div", { class: "chip-row" });
   const busySessions = new Set<string>();
+  const abortControllers = new Map<string, AbortController>();
   const isCurrentBusy = () => Boolean(State.activeSessionId && busySessions.has(State.activeSessionId));
+
+  function updateSendButton() {
+    clear(send);
+    if (isCurrentBusy()) {
+      send.classList.add("stop");
+      send.title = "İşlemi Durdur";
+      send.setAttribute("aria-label", "İşlemi Durdur");
+      send.append(svg(ICONS.stop, 10));
+    } else {
+      send.classList.remove("stop");
+      send.title = t(STRINGS.send);
+      send.setAttribute("aria-label", t(STRINGS.send));
+      send.append(svg(ICONS.arrowUp, 11));
+    }
+  }
+
+  function stopPrompt(sessionId = State.activeSessionId) {
+    if (!sessionId) return;
+    const ctrl = abortControllers.get(sessionId);
+    if (ctrl) {
+      ctrl.abort();
+      abortControllers.delete(sessionId);
+    }
+    busySessions.delete(sessionId);
+    liveTextBySession.delete(sessionId);
+    void Bridge.chatReset(sessionId);
+
+    if (State.activeSessionId === sessionId) {
+      State.stateOverride = null;
+      input.disabled = false;
+      Sound.play("blip");
+
+      updateSendButton();
+      drawModelButton();
+
+      const dots = log.querySelector(".typing");
+      if (dots) {
+        dots.closest(".chat-row")?.remove();
+      }
+      const liveEl = log.querySelector(".live-reply");
+      if (liveEl) {
+        liveEl.closest(".chat-row")?.remove();
+      }
+
+      const session = State.chatSessions.find((s) => s.id === sessionId);
+      if (session) {
+        const stopMsg: ChatMessage = {
+          id: nextId++,
+          role: "assistant",
+          content: "⏹️ *İşlem durduruldu.*",
+        };
+        session.messages.push(stopMsg);
+        State.chatHistory = [...session.messages];
+      }
+
+      State.saveCurrentSession();
+      updateSessionsBtnState();
+      State.notify();
+      onHeightChange();
+      scrollToBottom();
+      input.focus();
+    }
+  }
   const liveTextBySession = new Map<string, string>();
   const log = h("div", { class: "chat-log" });
   function scrollToBottom() {
@@ -394,6 +458,8 @@ export function buildPrompt(onHeightChange: () => void, actions?: ViewActions): 
     { cmd: "/review", args: "[hedef]", desc: "OMP P0-P3 otomatik kod inceleme ve release denetimi", cat: "OMP" },
     { cmd: "/commit", args: "[mesaj]", desc: "OMP atomik commit ayırıcı ve bağımlılık kontrolü", cat: "OMP" },
     { cmd: "/security", args: "[dizin]", desc: "Depoyu secret sızıntıları ve güvenlik açıklarına karşı tarar", cat: "Security" },
+    { cmd: "/autoclicker", args: "[start|stop]", desc: "Sistemde varsa autoclicker'ı açar, yoksa Omi'nin yerleşik tıklayıcısını başlatır", cat: "Automation" },
+    { cmd: "/discord", args: "[hedef] <mesaj>", desc: "Discord'da kişiye veya kanala sıfır kod yazımıyla anında (<400ms) mesaj atar", cat: "Automation" },
     { cmd: "/clear", desc: "Mevcut sohbet mesajlarını temizler", cat: "Sistem" },
   ];
 
@@ -872,7 +938,11 @@ export function buildPrompt(onHeightChange: () => void, actions?: ViewActions): 
 
     // Direct Skill Slash Commands (/computer, /cu, /playwright, /pw, ```skill:...)
     const isDirectSkill =
-      trimmed.startsWith("/computer") ||
+      trimmed.startsWith("/discord") ||
+      trimmed.startsWith("/dc ") ||
+      trimmed === "/dc" ||
+      trimmed.startsWith("/autoclicker") ||
+      trimmed.startsWith("/clicker") ||
       trimmed.startsWith("/cu ") ||
       trimmed.startsWith("/playwright") ||
       trimmed.startsWith("/pw ") ||
@@ -907,6 +977,9 @@ export function buildPrompt(onHeightChange: () => void, actions?: ViewActions): 
       State.chatHistory.push({ id: nextId++, role: "user", content: query });
       const curId = State.activeSessionId || ("chat_" + Date.now());
       busySessions.add(curId);
+      const abortCtrl = new AbortController();
+      abortControllers.set(curId, abortCtrl);
+      updateSendButton();
       input.disabled = true;
       drawModelButton();
       State.stateOverride = "thinking";
@@ -925,6 +998,8 @@ export function buildPrompt(onHeightChange: () => void, actions?: ViewActions): 
         Sound.play("error");
       } finally {
         busySessions.delete(curId);
+        abortControllers.delete(curId);
+        updateSendButton();
         input.disabled = isCurrentBusy();
         State.stateOverride = null;
         State.saveCurrentSession();
@@ -937,16 +1012,170 @@ export function buildPrompt(onHeightChange: () => void, actions?: ViewActions): 
       }
       return;
     }
+    // 0. Discord Natural Language Fast-Path (Zero-Code Instant Messaging)
+    const isDiscordRequest =
+      ((/(?:^|\s)(?:discord|dc)(?:'dan|'den|dan|den|'da|'de|da|de)?\b/i.test(trimmed) &&
+        /(?:mesaj\s+(?:at|yaz|gönder)|yaz|at|gönder)\b/i.test(trimmed)) ||
+        /(?:grubuna|kanalına|odasına)\s+.+\s*(?:mesaj\s+(?:at|yaz|gönder)|yaz|at|gönder)$/i.test(trimmed));
+    if (isDiscordRequest) {
+      const cleaned = trimmed.replace(/^(?:discord|dc)(?:'dan|'den|dan|den|'da|'de|da|de)?\s+/i, "").trim();
+      let target: string | null = null;
+      let message = "";
+      let isGroup = false;
+
+      // Group/channel matching (e.g. "not defteri grubuna selam yaz", "genel kanalına selam yaz")
+      const groupColonMatch = cleaned.match(
+        /^(.+?)\s*(?:grubuna|grubun|grubu|grub|grup|group|kanalına|kanalı|kanal|channel|odasına|odası|sunucusuna|sunucusu|sunucu)\s*(?:diye\s+)?(?:mesaj\s+(?:at|yaz|gönder)|yaz|at|gönder)?\s*:\s*(.+)$/i,
+      );
+      const groupDiyeMatch = cleaned.match(
+        /^(.+?)\s*(?:grubuna|grubun|grubu|grub|grup|group|kanalına|kanalı|kanal|channel|odasına|odası|sunucusuna|sunucusu|sunucu)\s+(.+?)\s*(?:diye\s+)?(?:mesaj\s+(?:at|yaz|gönder)|yaz|at|gönder)$/i,
+      );
+
+      if (groupColonMatch) {
+        target = groupColonMatch[1].trim();
+        message = groupColonMatch[2].trim();
+        isGroup = true;
+      } else if (groupDiyeMatch) {
+        target = groupDiyeMatch[1].trim();
+        message = groupDiyeMatch[2].trim();
+        isGroup = true;
+      } else {
+        const colonIdx = cleaned.indexOf(":");
+        if (colonIdx > 0) {
+          message = cleaned.slice(colonIdx + 1).trim();
+          const beforeColon = cleaned.slice(0, colonIdx).replace(/(?:mesaj\s+(?:at|yaz|gönder)|yaz|at|gönder)$/i, "").trim();
+          const tgt = beforeColon.replace(/(?:'a|'e|'ye|'ya|'te|'ta|a|e|ye|ya)$/i, "").trim();
+          if (tgt) target = tgt;
+        } else {
+          const quoteMatch = cleaned.match(/\"([^\"]+)\"|(?<=^|\s)'([^']+)'/);
+          if (quoteMatch) {
+            message = (quoteMatch[1] || quoteMatch[2]).trim();
+            const beforeQuote = cleaned.slice(0, quoteMatch.index).trim();
+            const tgt = beforeQuote.replace(/(?:'a|'e|'ye|'ya|'te|'ta|a|e|ye|ya)$/i, "").trim();
+            if (tgt) target = tgt;
+          } else {
+            const match = cleaned.match(/^(\S+?)(?:'a|'e|'ye|'ya|'te|'ta|a|e|ye|ya)\s+(.+?)\s+(?:diye\s+)?(?:mesaj\s+(?:at|yaz|gönder)|yaz|at|gönder)$/i);
+            if (match) {
+              target = match[1];
+              message = match[2].trim();
+            } else {
+              const fallbackMatch = cleaned.match(/^(.+?)\s+(?:diye\s+)?(?:mesaj\s+(?:at|yaz|gönder)|yaz|at|gönder)$/i);
+              if (fallbackMatch) {
+                message = fallbackMatch[1].trim();
+              } else {
+                message = cleaned;
+              }
+            }
+          }
+        }
+      }
+
+      if (target) {
+        if (/^(?:discord|dc)(?:'dan|'den|dan|den|'da|'de|da|de)?$/i.test(target)) {
+          target = null;
+        } else {
+          if (target.startsWith("#") || /\b(grup|group|kanal|channel|oda|sunucu)\b/i.test(target)) {
+            isGroup = true;
+          }
+          target = target.replace(/(?:grubuna|grubun|grubu|grub|grup|group|kanalına|kanalı|kanal|channel|odasına|odası|sunucusuna|sunucusu|sunucu)$/i, "").trim() || null;
+        }
+      }
+      message = message.replace(/(?:^|\s)(?:discord|dc)(?:'dan|'den|dan|den|'da|'de|da|de)?\s*/gi, " ").trim();
+
+      if (message) {
+        input.value = "";
+        State.chatHistory.push({ id: nextId++, role: "user", content: query });
+        try {
+          await Bridge.discordSendMessage(message, target, isGroup);
+          const targetStr = target
+            ? (isGroup ? `\`${target}\` grubuna/kanalına` : `\`${target}\` adlı kullanıcıya`)
+            : "aktif Discord sohbetine";
+          State.chatHistory.push({
+            id: nextId++,
+            role: "assistant",
+            content: `💬 **Discord Mesajı İletildi:**\n\n> "${message}"\n\n🎯 Hedef: ${targetStr}`,
+          });
+          Sound.play("finish");
+        } catch (err) {
+          State.chatHistory.push({ id: nextId++, role: "assistant", content: `❌ Discord mesajı gönderilemedi: ${String(err)}` });
+          Sound.play("error");
+        }
+        State.notify();
+        onHeightChange?.();
+        window.setTimeout(() => {
+          actions?.collapse();
+        }, 400);
+        return;
+      }
+    }
+
+    // 1. Natural Language Autoclicker Request Handler
+    const isAutoclickerNL =
+      /(?:bana\s+)?(?:bir\s+)?autoclicker\s+(?:lazım|aç|çalıştır|istiyorum|gerek(?:li)?)|otomatik\s+tıklay?ıcı\s+(?:lazım|aç|çalıştır|istiyorum|yap)/i.test(
+        trimmed,
+      );
+    if (isAutoclickerNL) {
+      input.value = "";
+      State.chatHistory.push({ id: nextId++, role: "user", content: query });
+      try {
+        const res = await Bridge.autoclickerLaunchOrCreate();
+        const content =
+          res?.mode === "existing"
+            ? `⚡ **Sistemde Yüklü Autoclicker Açıldı:** \`${res.appName || "Autoclicker"}\`\n\n${res.message}\n\n*${res.stopHint}*`
+            : `⚡ **Omi Yerleşik Autoclicker Başlatıldı:**\n\n${res?.message || "Omi yerleşik otomatik tıklayıcısı başlatıldı."}\n\n🛑 **${res?.stopHint || "Durdurmak için F8 veya ESC tuşuna basın."}**`;
+        State.chatHistory.push({ id: nextId++, role: "assistant", content });
+        Sound.play("finish");
+      } catch (err) {
+        State.chatHistory.push({ id: nextId++, role: "assistant", content: `❌ Autoclicker başlatılamadı: ${String(err)}` });
+        Sound.play("error");
+      }
+      State.notify();
+      onHeightChange?.();
+      window.setTimeout(() => {
+        actions?.collapse();
+      }, 400);
+      return;
+    }
+
+    // 2. Direct Message Protocol on Tagged Site/Window (Zero Trial-and-Error)
+    const isDirectMsg =
+      /^(?:(?:şuna|buna|siteye|sekmesine|sekmede|pencereye)\s+)?(?:mesaj\s+yaz|mesaj\s+gönder|mesaj\s+at|yazmaya\s+devam\s+et|şunu\s+yaz)\s*(?::|\s)\s*(.+)$/i.exec(
+        trimmed,
+      );
+    if (isDirectMsg && State.activeTabContext) {
+      const msgText = (isDirectMsg[1] || "").trim();
+      if (msgText) {
+        input.value = "";
+        State.chatHistory.push({ id: nextId++, role: "user", content: query });
+        try {
+          await Bridge.executeComputerAction({ action: "type", text: msgText });
+          await Bridge.executeComputerAction({ action: "key", key: "Enter" });
+          State.chatHistory.push({
+            id: nextId++,
+            role: "assistant",
+            content: `✍️ **Mesaj "${State.activeTabContext}" Sekmesine Doğrudan Yazıldı ve Gönderildi:**\n\n> "${msgText}"\n\n*Kanıtlanmış doğrudan yazma yöntemi kullanıldı (sıfır deneme-yanılma).*`,
+          });
+          Sound.play("finish");
+        } catch (err) {
+          State.chatHistory.push({ id: nextId++, role: "assistant", content: `❌ Mesaj gönderilemedi: ${String(err)}` });
+          Sound.play("error");
+        }
+        State.notify();
+        onHeightChange?.();
+        return;
+      }
+    }
+
     // Check if query is about local files, folders, or local computer actions
     const isLocalRequest = /\b(dosya|dosyayı|dosyasını|klasör|klasörü|klasörünü|dizin|bilgisayar|bilgisayarda|src|src-tauri|proje|projeyi|file|folder|kod|kodu)\b/i.test(trimmed);
 
-    // Only intercept as a web search if NOT a local file command AND user explicitly asks for web/platform search
-    const hasWebPlatform = /^(google|sahibinden|airbnb|hepsiemlak|youtube)(?:'da|'de|da|de)?\s+/i.test(trimmed);
+    // 3. Web Search & Smart Auto-Tagging (Airbnb, Sahibinden, Google, etc.)
+    const hasWebPlatform = /^(google|sahibinden|airbnb|hepsiemlak|youtube)(?:'da|'de|da|de|'dan|'den|dan|den)?\s+/i.test(trimmed);
     const hasExplicitWebSearch = /(?:diye\s+arat|web(?:'de|de)?\s+ara|internette\s+ara|google(?:'da|da)?\s+ara)/i.test(trimmed);
 
     if (!isLocalRequest && (hasWebPlatform || hasExplicitWebSearch)) {
       const searchMatch = trimmed.match(
-        /^(?:(?:(google|sahibinden|airbnb|hepsiemlak|youtube)(?:'da|'de|da|de)?\s+)?(.+?)\s+(?:diye\s+)?(?:arat|ara|bul|listele)|(?:ara|arat|bul)\s+(.+))$/i,
+        /^(?:(?:(google|sahibinden|airbnb|hepsiemlak|youtube)(?:'da|'de|da|de|'dan|'den|dan|den)?\s+)?(.+?)\s+(?:diye\s+)?(?:arat|ara|bul|listele|göster)|(?:ara|arat|bul|listele)\s+(.+))$/i,
       );
       if (searchMatch) {
         const platform = (searchMatch[1] || "").toLowerCase();
@@ -965,21 +1194,75 @@ export function buildPrompt(onHeightChange: () => void, actions?: ViewActions): 
           }
 
           let searchUrl = `https://www.google.com/search?q=${encodeURIComponent(term)}`;
-          if (effectivePlatform === "sahibinden") {
+          let tagTitle = "";
+          let displayTitle = term;
+
+          if (effectivePlatform === "airbnb") {
+            // Smart Airbnb parsing (location, bedrooms, clean fillers)
+            const bedroomMatch = term.match(/(\d+)\s*\+\s*(\d+)|\b(\d+)\s*(?:oda|yatak|bedroom)/i);
+            const minBedrooms = bedroomMatch ? bedroomMatch[1] || bedroomMatch[3] : null;
+
+            const FILLER_WORDS: Record<string, true> = {
+              bana: true, şu: true, bu: true, o: true, tüm: true, lütfen: true,
+              evleri: true, evler: true, ev: true, daireleri: true, daireler: true,
+              daire: true, villaları: true, villalar: true, villa: true,
+              listele: true, göster: true, bul: true, ara: true, arat: true,
+              ilanları: true, ilanlar: true, satılık: true, kiralık: true, fiyatları: true,
+            };
+
+            const cleanTokens = term
+              .split(/\s+/)
+              .filter((token) => {
+                const lower = token.toLowerCase();
+                if (FILLER_WORDS[lower]) return false;
+                if (/^(\d+)\s*\+\s*(\d+)$/.test(lower)) return false;
+                if (/^(\d+)(?:oda|yatak)?$/.test(lower)) return false;
+                return true;
+              })
+              .map((token) => {
+                // Strip Turkish locative/relative suffixes: "kıbrıstaki" / "kıbrıs'taki" -> "kıbrıs"
+                return token.replace(/(?:'ta|'te|'daki|'deki|taki|teki|daki|deki)$/i, "");
+              })
+              .filter(Boolean);
+
+            let cleanLocation = cleanTokens.join(" ").trim();
+            cleanLocation = cleanLocation
+              .split(" ")
+              .map((w) => (w.length ? w[0].toUpperCase() + w.slice(1).toLowerCase() : ""))
+              .join(" ")
+              .trim();
+
+            if (!cleanLocation) cleanLocation = "Kıbrıs";
+            if (minBedrooms) {
+              searchUrl = `https://www.airbnb.com.tr/s/${encodeURIComponent(cleanLocation)}/homes?min_bedrooms=${minBedrooms}`;
+              tagTitle = `Airbnb: ${cleanLocation} (${minBedrooms}+1 Evler)`;
+              displayTitle = `${cleanLocation} ${minBedrooms}+1 Evleri`;
+            } else {
+              searchUrl = `https://www.airbnb.com.tr/s/${encodeURIComponent(cleanLocation)}/homes`;
+              tagTitle = `Airbnb: ${cleanLocation} Evleri`;
+              displayTitle = `${cleanLocation} Evleri`;
+            }
+          } else if (effectivePlatform === "sahibinden") {
             searchUrl = `https://www.sahibinden.com/arama?query_text=${encodeURIComponent(term)}`;
-          } else if (effectivePlatform === "airbnb") {
-            searchUrl = `https://www.airbnb.com.tr/s/${encodeURIComponent(term)}/homes`;
+            tagTitle = `Sahibinden: ${term}`;
           } else if (effectivePlatform === "youtube") {
             searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(term)}`;
+            tagTitle = `YouTube: ${term}`;
           } else if (effectivePlatform === "hepsiemlak") {
             searchUrl = `https://www.hepsiemlak.com/arama?q=${encodeURIComponent(term)}`;
+            tagTitle = `Hepsiemlak: ${term}`;
+          } else {
+            tagTitle = `Google: ${term}`;
           }
+
+          // AUTO-TAG THE ACTIVE CONTEXT
+          State.activeTabContext = tagTitle;
 
           void Bridge.openUrl(searchUrl);
           State.chatHistory.push({
             id: nextId++,
             role: "assistant",
-            content: `🌐 **Web araması yapıldı:** [${term}](${searchUrl})\n\nTarayıcınızda açıldı. Sayfayı rahatça görebilmeniz için ada küçültüldü.`,
+            content: `🌐 **${effectivePlatform === "airbnb" ? "Airbnb" : effectivePlatform.toUpperCase()} Sekmesi Otomatik Etiketlendi ve Açıldı:** [${displayTitle}](${searchUrl})\n\nSekme \`${tagTitle}\` olarak etiketlendi ve tarayıcınızda açıldı. Sayfayı rahatça görebilmeniz için ada küçültüldü.`,
           });
           Sound.play("finish");
           State.notify();
@@ -996,7 +1279,9 @@ export function buildPrompt(onHeightChange: () => void, actions?: ViewActions): 
     input.value = "";
     const originSessionId = State.activeSessionId || ("chat_" + Date.now());
     busySessions.add(originSessionId);
-
+    const abortCtrl = new AbortController();
+    abortControllers.set(originSessionId, abortCtrl);
+    updateSendButton();
     let originSession = State.chatSessions.find((s) => s.id === originSessionId);
     if (!originSession) {
       originSession = {
@@ -1096,6 +1381,7 @@ export function buildPrompt(onHeightChange: () => void, actions?: ViewActions): 
           fullQuery = `[Ekran Görüntüsü / Dosya: "${file.name}"]\n\n${fullQuery}`;
         }
         const reply = await Bridge.chatSend(fullQuery, context, originSessionId);
+        if (abortCtrl.signal.aborted) return;
         replyText = reply.text;
         const asstMsg: ChatMessage = { id: nextId++, role: "assistant", content: replyText };
         State.appendMessageToSession(originSessionId, asstMsg);
@@ -1103,8 +1389,8 @@ export function buildPrompt(onHeightChange: () => void, actions?: ViewActions): 
           let currentSkill = await executeSkillFromQuery(replyText);
           let loopSteps = 0;
           const MAX_SKILL_STEPS = 8;
-
           while (currentSkill && loopSteps < MAX_SKILL_STEPS) {
+            if (abortCtrl.signal.aborted) break;
             loopSteps++;
             const skillResultMarkdown = formatSkillResultMarkdown(currentSkill);
             const skillMsg: ChatMessage = { id: nextId++, role: "assistant", content: skillResultMarkdown };
@@ -1208,6 +1494,8 @@ Henüz bitmediyse sıradaki eylemi JSON bloğu olarak üret:
     } finally {
       busySessions.delete(originSessionId);
       liveTextBySession.delete(originSessionId);
+      abortControllers.delete(originSessionId);
+      updateSendButton();
       if (isViewingOrigin()) {
         activeDots?.remove();
         log.querySelector(".typing")?.parentElement?.remove();
@@ -1223,7 +1511,13 @@ Henüz bitmediyse sıradaki eylemi JSON bloğu olarak üret:
     }
   }
 
-  send.addEventListener("click", () => void submit());
+  send.addEventListener("click", () => {
+    if (isCurrentBusy()) {
+      stopPrompt(State.activeSessionId || undefined);
+    } else {
+      void submit();
+    }
+  });
   input.addEventListener("input", () => {
     const val = input.value;
     if (val.startsWith("/") && !val.includes(" ")) {
@@ -1274,9 +1568,16 @@ Henüz bitmediyse sıradaki eylemi JSON bloğu olarak üret:
     }
 
     if (key === "Enter") {
+      if (isCurrentBusy()) {
+        e.preventDefault();
+        return;
+      }
       e.preventDefault();
       closeSuggest();
       void submit();
+    } else if (key === "Escape" && isCurrentBusy()) {
+      e.preventDefault();
+      stopPrompt(State.activeSessionId || undefined);
     } else if (key === "Escape" && isSessionsOpen) {
       e.preventDefault();
       closeSessionsPanel();
@@ -1453,8 +1754,8 @@ Henüz bitmediyse sıradaki eylemi JSON bloğu olarak üret:
         }
       }
       drawModelButton();
+      updateSendButton();
       input.placeholder = t(State.chatHistory.length === 0 ? STRINGS.placeholderFirst : STRINGS.placeholderNext);
-      input.disabled = isCurrentBusy();
     },
     focus() {
       input.focus();

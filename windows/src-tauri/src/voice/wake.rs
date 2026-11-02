@@ -9,10 +9,12 @@ pub fn normalize(text: &str) -> String {
             'à' | 'á' | 'â' | 'ä' | 'ã' | 'å' => 'a',
             'ç' => 'c',
             'è' | 'é' | 'ê' | 'ë' => 'e',
-            'ì' | 'í' | 'î' | 'ï' => 'i',
+            'ì' | 'í' | 'î' | 'ï' | 'ı' => 'i',
             'ò' | 'ó' | 'ô' | 'ö' | 'õ' => 'o',
             'ù' | 'ú' | 'û' | 'ü' => 'u',
             'ÿ' | 'ý' => 'y',
+            'ğ' => 'g',
+            'ş' => 's',
             'ñ' => 'n',
             c if c.is_alphanumeric() => c,
             _ => ' ',
@@ -24,7 +26,7 @@ pub fn normalize(text: &str) -> String {
 
 /// How Parakeet may write "OK".
 fn is_ok(word: &str) -> bool {
-    matches!(word, "ok" | "okay" | "oke" | "okey" | "hey" | "ey")
+    matches!(word, "ok" | "okay" | "oke" | "okey" | "hey" | "ey" | "selam" | "merhaba" | "alo")
 }
 
 /// How Parakeet may write "omi" or "coucou", in one word.
@@ -53,6 +55,8 @@ pub fn after_wake(text: &str) -> Option<String> {
             ok_end = Some(i + 1);
         } else if norm[i] == "o k" || (norm[i] == "o" && norm.get(i + 1).map(String::as_str) == Some("k")) {
             ok_end = Some(if norm[i] == "o" { i + 2 } else { i + 1 });
+        } else if is_coucou(&norm[i]) {
+            return Some(words[i + 1..].join(" ").trim_start_matches([',', '.', '!', ' ']).trim().to_string());
         }
         if let Some(j) = ok_end {
             // A word made of two ("ok coucou" written as one token is rare but happens).

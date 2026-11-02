@@ -467,7 +467,25 @@ export const Bridge = {
   executeComputerAction: (action: Record<string, unknown>) => callOrThrow<ComputerActionResult>("execute_computer_action", { action }),
   executePlaywrightAction: (params: Record<string, unknown>) => callOrThrow<PlaywrightResult>("execute_playwright_action", { params }),
   executeBrowserUseAction: (params: Record<string, unknown>) => callOrThrow<BrowserUseResult>("execute_browser_use_action", { params }),
+  autoclickerLaunchOrCreate: (intervalMs?: number) =>
+    call<AutoclickerStatus>("autoclicker_launch_or_create", { intervalMs: intervalMs ?? null }),
+  autoclickerStop: () => call<boolean>("autoclicker_stop"),
+  autoclickerStatus: () => call<boolean>("autoclicker_status"),
+  discordSendMessage: (message: string, target?: string | null, isGroup?: boolean | null) =>
+    callOrThrow<{ success: boolean; target?: string; message: string }>("discord_send_message", {
+      message,
+      target: target ?? null,
+      isGroup: isGroup ?? null,
+    }),
 };
+
+export interface AutoclickerStatus {
+  success: boolean;
+  mode: "existing" | "builtin";
+  appName?: string | null;
+  message: string;
+  stopHint: string;
+}
 
 export interface ComputerActionResult {
   success: boolean;

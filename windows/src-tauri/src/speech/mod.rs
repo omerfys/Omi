@@ -348,23 +348,90 @@ pub fn samples_to_pcm16(samples: &[f32]) -> Vec<u8> {
     bytes
 }
 
-fn transcribe_with_runner(samples: &[f32], lang: &str) -> Option<String> {
-    let mut script_candidates = vec![
-        std::env::current_dir().unwrap_or_default().join("scripts").join("stt_runner.py"),
-        std::env::current_dir().unwrap_or_default().join("windows").join("scripts").join("stt_runner.py"),
-    ];
+pub const EMBEDDED_STT_RUNNER_PY: &str = r#"#!/usr/bin/env python3
+# Omi Ultra-Fast Multilingual Speech-to-Text Runner (Turkish Primary)
+import sys
+import speech_recognition as sr
+
+def main():
+    lang = sys.argv[1] if len(sys.argv) > 1 else "tr-TR"
+    is_turkish = lang.lower().startswith("tr")
+    pcm_bytes = sys.stdin.buffer.read()
+    if not pcm_bytes:
+        sys.exit(0)
+
+    r = sr.Recognizer()
+    r.energy_threshold = 150
+    r.dynamic_energy_threshold = False
+    audio = sr.AudioData(pcm_bytes, 16000, 2)
+
+    primary_lang = "tr-TR" if is_turkish else lang
+    try:
+        text = r.recognize_google(audio, language=primary_lang)
+        if text and text.strip():
+            sys.stdout.buffer.write(text.strip().encode("utf-8"))
+            sys.stdout.buffer.flush()
+            sys.exit(0)
+    except Exception:
+        pass
+
+    if is_turkish:
+        try:
+            text = r.recognize_google(audio, language="tr")
+            if text and text.strip():
+                sys.stdout.buffer.write(text.strip().encode("utf-8"))
+                sys.stdout.buffer.flush()
+                sys.exit(0)
+        except Exception:
+            pass
+        sys.exit(0)
+
+    if not is_turkish and lang != "en-US":
+        try:
+            text = r.recognize_google(audio, language="en-US")
+            if text and text.strip():
+                sys.stdout.buffer.write(text.strip().encode("utf-8"))
+                sys.stdout.buffer.flush()
+        except Exception:
+            pass
+
+if __name__ == "__main__":
+    main()
+"#;
+
+pub fn find_or_extract_stt_runner() -> Option<PathBuf> {
+    let mut candidates = Vec::new();
+    if let Ok(cwd) = std::env::current_dir() {
+        for ancestor in cwd.ancestors() {
+            candidates.push(ancestor.join("scripts").join("stt_runner.py"));
+            candidates.push(ancestor.join("windows").join("scripts").join("stt_runner.py"));
+        }
+    }
     if let Ok(exe) = std::env::current_exe() {
-        if let Some(parent) = exe.parent() {
-            script_candidates.push(parent.join("scripts").join("stt_runner.py"));
-            script_candidates.push(parent.join("..").join("windows").join("scripts").join("stt_runner.py"));
+        for ancestor in exe.ancestors() {
+            candidates.push(ancestor.join("scripts").join("stt_runner.py"));
+            candidates.push(ancestor.join("windows").join("scripts").join("stt_runner.py"));
         }
     }
 
-    let script = script_candidates.iter().find(|p| p.exists())?;
+    if let Some(existing) = candidates.iter().find(|p| p.is_file()) {
+        return Some(existing.clone());
+    }
+
+    // Infallible fallback: write embedded script to %TEMP%/omi_stt_runner.py
+    let temp_script = std::env::temp_dir().join("omi_stt_runner.py");
+    if std::fs::write(&temp_script, EMBEDDED_STT_RUNNER_PY).is_ok() {
+        return Some(temp_script);
+    }
+    None
+}
+
+fn transcribe_with_runner(samples: &[f32], lang: &str) -> Option<String> {
+    let script = find_or_extract_stt_runner()?;
     let pcm = samples_to_pcm16(samples);
 
     let mut cmd = std::process::Command::new("python");
-    cmd.arg(script).arg(lang);
+    cmd.arg(&script).arg(lang);
     cmd.env("PYTHONIOENCODING", "utf-8");
     cmd.env("PYTHONUTF8", "1");
     cmd.stdin(std::process::Stdio::piped());
@@ -376,7 +443,14 @@ fn transcribe_with_runner(samples: &[f32], lang: &str) -> Option<String> {
         cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
     }
 
-    let mut child = cmd.spawn().ok()?;
+    let mut child = match cmd.spawn() {
+        Ok(c) => c,
+        Err(e) => {
+            crate::log::line(format!("speech: failed to spawn python: {e}"));
+            return None;
+        }
+    };
+
     if let Some(mut stdin) = child.stdin.take() {
         use std::io::Write;
         let _ = stdin.write_all(&pcm);
@@ -391,17 +465,31 @@ fn transcribe_with_runner(samples: &[f32], lang: &str) -> Option<String> {
     if text.is_empty() {
         None
     } else {
+        crate::log::line(format!("speech: transcribed [{lang}] -> '{text}'"));
         Some(text)
     }
 }
 
 /// Transcribes 16 kHz mono audio.
 pub fn transcribe(samples: &[f32]) -> Option<Transcript> {
-    if let Some(text) = transcribe_with_runner(samples, "tr-TR") {
+    let current_lang = crate::i18n::current();
+    let runner_lang = if current_lang.starts_with("tr") || current_lang.is_empty() {
+        "tr-TR"
+    } else {
+        current_lang
+    };
+
+    if let Some(text) = transcribe_with_runner(samples, runner_lang) {
         return Some(Transcript {
             text,
             words: Vec::new(),
         });
+    }
+
+    // Parakeet is an English-only ASR model. Do NOT fall back to Parakeet for Turkish speech,
+    // as it will misinterpret Turkish phonetics as English words.
+    if runner_lang.starts_with("tr") {
+        return None;
     }
 
     let rec = recognizer()?;

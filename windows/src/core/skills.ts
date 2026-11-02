@@ -16,7 +16,10 @@ export interface SkillExecutionResult {
     | "composio_skills"
     | "replica_skills"
     | "ponytail_skills"
-    | "adhd_skills";
+    | "adhd_skills"
+    | "autoclicker"
+    | "direct-message"
+    | "discord_skill";
   action: string;
   success: boolean;
   message: string;
@@ -641,9 +644,135 @@ export const AdhdSkills = {
   },
 };
 
-// ── 4. Skills Dispatcher & Intent Detection ─────────────────────────────────
-// ── 3. Skills Dispatcher & Intent Detection ─────────────────────────────────
+export const AutoclickerSkill = {
+  id: "autoclicker",
+  name: "Omi Autoclicker Engine",
+  summary: "Sistemde kurulu autoclicker varsa açar, yoksa yerleşik yüksek hızlı tıklama motorunu başlatır.",
+  async execute(params: { action?: "start" | "stop" | "status"; intervalMs?: number }): Promise<SkillExecutionResult> {
+    const action = params.action || "start";
+    if (action === "stop") {
+      const stopped = await Bridge.autoclickerStop();
+      return {
+        skill: "autoclicker",
+        action: "stop",
+        success: stopped ?? true,
+        message: "🛑 **Autoclicker Durduruldu:** Otomatik tıklama işlemi sonlandırıldı.",
+      };
+    }
+    if (action === "status") {
+      const isRunning = await Bridge.autoclickerStatus();
+      return {
+        skill: "autoclicker",
+        action: "status",
+        success: true,
+        message: isRunning ? "⚡ **Autoclicker Durumu:** Aktif olarak tıklıyor." : "💤 **Autoclicker Durumu:** Şu anda kapalı.",
+      };
+    }
+    const res = await Bridge.autoclickerLaunchOrCreate(params.intervalMs);
+    if (!res) {
+      return {
+        skill: "autoclicker",
+        action: "start",
+        success: false,
+        message: "❌ Autoclicker başlatılamadı.",
+      };
+    }
+    return {
+      skill: "autoclicker",
+      action: res.mode,
+      success: res.success,
+      message: res.mode === "existing"
+        ? `⚡ **Sistemde Yüklü Autoclicker Açıldı:** \`${res.appName || "Autoclicker"}\`\n\n${res.message}\n\n*${res.stopHint}*`
+        : `⚡ **Omi Yerleşik Autoclicker Başlatıldı:**\n\n${res.message}\n\n🛑 **${res.stopHint}**`,
+      output: res,
+    };
+  },
+};
 
+export const DirectMessageSkill = {
+  id: "direct-message",
+  name: "Direct Tagged Site Messaging",
+  summary: "Etiketlenen site veya pencereye deneme-yanılma yapmadan doğrudan kanıtlanmış yöntemle mesaj yazar.",
+  async execute(params: { text: string; pressEnter?: boolean; targetWindow?: string }): Promise<SkillExecutionResult> {
+    const text = params.text.trim();
+    if (!text) {
+      return {
+        skill: "direct-message",
+        action: "type",
+        success: false,
+        message: "❌ Yazılacak mesaj metni boş olamaz.",
+      };
+    }
+    try {
+      await Bridge.executeComputerAction({
+        action: "type",
+        text,
+      });
+      if (params.pressEnter !== false) {
+        await Bridge.executeComputerAction({
+          action: "key",
+          key: "Enter",
+        });
+      }
+      return {
+        skill: "direct-message",
+        action: "type",
+        success: true,
+        message: `✍️ **Mesaj Doğrudan Yazıldı ve Gönderildi:**\n\n> "${text}"\n\n*Kanıtlanmış doğrudan yazma yöntemi kullanıldı (sıfır deneme-yanılma).*`,
+      };
+    } catch (err) {
+      return {
+        skill: "direct-message",
+        action: "type",
+        success: false,
+        message: `❌ Mesaj yazılırken hata oluştu: ${String(err)}`,
+      };
+    }
+  },
+};
+
+export const DiscordSkill = {
+  id: "discord_skill",
+  name: "Discord Fast Messenger",
+  summary: "Discord'da herhangi bir kişiye veya kanala sıfırdan kod yazmadan <400ms hızla mesaj gönderir.",
+  async execute(params: { message: string; target?: string | null; isGroup?: boolean }): Promise<SkillExecutionResult> {
+    const text = params.message.trim();
+    if (!text) {
+      return {
+        skill: "discord_skill",
+        action: "send",
+        success: false,
+        message: "❌ Gönderilecek mesaj metni boş olamaz.",
+      };
+    }
+    try {
+      const isGroup = Boolean(params.isGroup || (params.target && (params.target.startsWith("#") || /\b(grup|group|kanal|channel)\b/i.test(params.target))));
+      const cleanTarget = params.target
+        ? params.target.replace(/(?:grubuna|grubun|grubu|grub|grup|group|kanalına|kanalı|kanal|channel)$/i, "").trim()
+        : null;
+      const res = await Bridge.discordSendMessage(text, cleanTarget, isGroup);
+      const targetStr = cleanTarget
+        ? (isGroup ? `\`${cleanTarget}\` grubuna/kanalına` : `\`${cleanTarget}\` adlı kullanıcıya`)
+        : "aktif Discord sohbetine";
+      return {
+        skill: "discord_skill",
+        action: "send",
+        success: true,
+        message: `💬 **Discord Mesajı İletildi:**\n\n> "${text}"\n\n🎯 Hedef: ${targetStr}`,
+        output: res,
+      };
+    } catch (err) {
+      return {
+        skill: "discord_skill",
+        action: "send",
+        success: false,
+        message: `❌ Discord mesajı gönderilemedi: ${String(err)}`,
+      };
+    }
+  },
+};
+
+// ── 4. Skills Dispatcher & Intent Detection ─────────────────────────────────
 /**
  * Checks if user query or AI response contains a direct skill command or tool execution block.
  */
@@ -651,7 +780,43 @@ export async function executeSkillFromQuery(query: string): Promise<SkillExecuti
   const trimmed = query.trim();
 
   // Slash commands:
-  // /computer click 500 300
+  // /discord [target] <message>
+  if (trimmed.startsWith("/discord") || trimmed.startsWith("/dc")) {
+    const withoutCmd = trimmed.replace(/^\/(discord|dc)\s*/i, "").trim();
+    let target: string | null = null;
+    let message = withoutCmd;
+    const quoteMatch = withoutCmd.match(/^["']([^"']+)["']\s+(.+)$/);
+    if (quoteMatch) {
+      target = quoteMatch[1];
+      message = quoteMatch[2];
+    } else {
+      const spaceIdx = withoutCmd.indexOf(" ");
+      if (spaceIdx > 0) {
+        target = withoutCmd.slice(0, spaceIdx);
+        message = withoutCmd.slice(spaceIdx + 1).trim();
+      }
+    }
+    const isGroup = Boolean(target && (target.startsWith("#") || /\b(grup|group|kanal|channel)\b/i.test(target)));
+    const cleanTarget = target
+      ? target.replace(/(?:grubuna|grubun|grubu|grub|grup|group|kanalına|kanalı|kanal|channel)$/i, "").trim()
+      : null;
+    return DiscordSkill.execute({ target: cleanTarget, message, isGroup });
+  }
+
+  // /autoclicker [start|stop|status]
+  if (trimmed.startsWith("/autoclicker") || trimmed.startsWith("/clicker")) {
+    const parts = trimmed.split(/\s+/);
+    const sub = parts[1]?.toLowerCase();
+    if (sub === "stop" || sub === "durdur" || sub === "kapat") {
+      return AutoclickerSkill.execute({ action: "stop" });
+    }
+    if (sub === "status" || sub === "durum") {
+      return AutoclickerSkill.execute({ action: "status" });
+    }
+    const interval = parts[1] && !isNaN(parseInt(parts[1], 10)) ? parseInt(parts[1], 10) : undefined;
+    return AutoclickerSkill.execute({ action: "start", intervalMs: interval });
+  }
+
   // /computer type Merhaba dunya
   // /computer screenshot
   // /computer hotkey ctrl c
@@ -1051,6 +1216,12 @@ export function formatSkillResultMarkdown(res: SkillExecutionResult): string {
       ? "🎯"
       : res.skill === "omp_harness"
       ? "⚡"
+      : res.skill === "autoclicker"
+      ? "⚡"
+      : res.skill === "direct-message"
+      ? "✍️"
+      : res.skill === "discord_skill"
+      ? "💬"
       : "🎭";
   const badgeTitle =
     res.skill === "computer_use"
@@ -1073,6 +1244,12 @@ export function formatSkillResultMarkdown(res: SkillExecutionResult): string {
       ? "ADHD Focused Mode"
       : res.skill === "omp_harness"
       ? "OMP (Oh-My-Pi) Harness"
+      : res.skill === "autoclicker"
+      ? "Autoclicker Engine"
+      : res.skill === "direct-message"
+      ? "Direct Messaging Skill"
+      : res.skill === "discord_skill"
+      ? "Discord Fast Messenger"
       : "Playwright Skill";
   const statusIcon = res.success ? "✅" : "❌";
   if (res.skill === "gemini_skills") {

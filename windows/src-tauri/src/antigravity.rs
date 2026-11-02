@@ -403,8 +403,9 @@ pub async fn voice_turn(
     }
 
     let t = crate::platform::local_time();
+    let priority = crate::chat::omi_priority_system_prompt();
     let voice_system_prompt = format!(
-        "{system}\n\n🇹🇷 SESLİ ASİSTAN YETKİ VE DİL KURALI:\n\
+        "{system}\n\n{priority}\n\n🇹🇷 SESLİ ASİSTAN YETKİ VE DİL KURALI:\n\
 Sen Omi'sin — kullanıcının bilgisayarındaki akıllı masaüstü sesli asistanısın.\n\
 Kullanıcının yerel bilgisayar saati ve tarihi: {:02}:{:02} ({:04}-{:02}-{:02}). Kullanıcı saati veya tarihi sorduğunda doğrudan bu saate göre söyle!\n\
 🌐 İNTERNET, CANLI YAYIN, YOUTUBE VE EYLEM YETKİSİ:\n\
@@ -1627,6 +1628,63 @@ fn execute_action(app: &AppHandle, cwd_str: &str, action_type: &str, body: &str)
         "playwright" | "browser" | "browser_use" => {
             format!("\n> 🌐 **[Playwright / Browser]** Tarayıcı eylemi işlendi: `{}`\n", body.lines().next().unwrap_or("browser_action"))
         }
+        "discord" | "discord_message" => {
+            let mut target = String::new();
+            let mut message = String::new();
+            for line in body.lines() {
+                if let Some((k, v)) = line.split_once(':') {
+                    let k = k.trim().to_lowercase();
+                    let v = v.trim();
+                    if k == "target" || k == "user" || k == "to" || k == "channel" {
+                        target = v.to_string();
+                    } else if k == "message" || k == "text" || k == "body" || k == "content" {
+                        message = v.to_string();
+                    }
+                }
+            }
+            if message.is_empty() {
+                message = body.trim().to_string();
+            }
+
+            let script_path = crate::speech::find_or_extract_stt_runner()
+                .and_then(|p| p.parent().map(|d| d.join("discord_messenger.ps1")))
+                .or_else(|| {
+                    let p = std::path::PathBuf::from("scripts/discord_messenger.ps1");
+                    if p.exists() { Some(p) } else { None }
+                })
+                .unwrap_or_else(|| std::path::PathBuf::from("scripts/discord_messenger.ps1"));
+
+            let mut cmd = std::process::Command::new("powershell");
+            cmd.args(&[
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                script_path.to_str().unwrap_or("discord_messenger.ps1"),
+                "-Message",
+                &message,
+            ]);
+            if !target.is_empty() {
+                cmd.args(&["-Target", &target]);
+            }
+            #[cfg(windows)]
+            {
+                use std::os::windows::process::CommandExt;
+                cmd.creation_flags(0x08000000);
+            }
+
+            match cmd.output() {
+                Ok(out) if out.status.success() => {
+                    let target_str = if target.is_empty() { "aktif Discord sohbetine" } else { &target };
+                    format!("\n> 💬 **[Discord Mesajı Gönderildi]**\n> Hedef: `{target_str}`\n> Mesaj: \"{message}\"\n")
+                }
+                Ok(out) => {
+                    let err = String::from_utf8_lossy(&out.stderr);
+                    format!("\n> ❌ **[Discord Hatası]** {err}\n")
+                }
+                Err(e) => format!("\n> ❌ **[Discord Çalıştırma Hatası]** {e}\n"),
+            }
+        }
         _ => format!("\n> ❓ Bilinmeyen eylem: {action_type}\n"),
     }
 }
@@ -2037,12 +2095,13 @@ pub async fn send(
         String::new()
     };
 
+    let priority = crate::chat::omi_priority_system_prompt();
     let system_instruction = format!(
         "RFC 2119 keywords: MUST, REQUIRED, SHOULD, RECOMMENDED, MAY, OPTIONAL. `NEVER` = `MUST NOT`; `AVOID` = `SHOULD NOT`.\n\n\
-        § Role & Identity
-        You are Omi — a world-class autonomous software engineer and trusted desktop AI companion built with the rigorous standards of oh-my-pi (OMP).
-        Your name is strictly Omi. When user greets or asks who you are, warmly introduce yourself: 'Selam, ben Omi!' or 'Merhaba! Ben Omi, masaüstü asistanın.'
-
+        {priority}\n\n\
+        § Role & Identity\n\
+        You are Omi — a world-class autonomous software engineer and trusted desktop AI companion built with the rigorous standards of oh-my-pi (OMP).\n\
+        Your name is strictly Omi. When user greets or asks who you are, warmly introduce yourself: 'Selam, ben Omi!' or 'Merhaba! Ben Omi, masaüstü asistanın.'\n\
         🇹🇷 DİL VE İLETİŞİM KURALI (PRIMARY LANGUAGE: TÜRKÇE):
         - Kullanıcı Türkçe konuştuğunda veya uygulama Türkçe olduğunda KESİNLİKLE VE İSTİSNASIZ TÜRKÇE YANIT VER.
         - Kullanıcıya asla İngilizce veya yabancı bir dilde hitap etme, her zaman akıcı, doğal, samimi ve Türkçe konuş.
@@ -2119,7 +2178,13 @@ pub async fn send(
         ```action:computer
         action: screenshot
         ```
-        YEREL DOSYA / KLASÖR AÇMA TALEPLERİ:\n\
+        - Discord'da kişiye veya kanala hızlı mesaj atmak için (SIFIR KOD YAZIMI):
+        ```action:discord
+        target: <kullanici_veya_kanal>
+        message: <gonderilecek_mesaj>
+        ```
+        (Sıfırdan script yazmak YASAKTIR. Discord Quick Switcher ve Clipboard ile <400ms sürede mesajı anında iletir.)
+
         Kullanıcı 'dosyayı aç', 'klasörü aç', 'projeyi aç' dediğinde bunu web araması yapma! Doğrudan Gezgin veya VS Code ile aç:\n\
         - Gezginde açmak için: `action:shell` -> `explorer \"<yol>\"`\n\
         - VS Code'da açmak için: `action:shell` -> `code \"<yol>\"`\n\n\

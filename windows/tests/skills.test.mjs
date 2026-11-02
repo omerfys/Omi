@@ -10,8 +10,9 @@ const {
   executeSkillFromQuery,
   extractSkillPayload,
   formatSkillResultMarkdown,
+  AutoclickerSkill,
+  DirectMessageSkill,
 } = await import("../src/core/skills.ts");
-
 test("Karpathy guidelines provides 4 core principles and checks code", async () => {
   assert.equal(KarpathySkills.principles.length, 4);
   assert.ok(KarpathySkills.principles.some((p) => p.id === "think-before-coding"));
@@ -79,8 +80,31 @@ test("Slash commands route to corresponding universal skills", async () => {
   const artifactRes = await executeSkillFromQuery("/artifact");
   assert.ok(artifactRes);
   assert.equal(artifactRes.action, "artifacts-builder");
+
+  const clickerRes = await executeSkillFromQuery("/autoclicker stop");
+  assert.ok(clickerRes);
+  assert.equal(clickerRes.skill, "autoclicker");
+  assert.equal(clickerRes.action, "stop");
 });
 
+test("AutoclickerSkill handles status and stop actions cleanly", async () => {
+  const stopRes = await AutoclickerSkill.execute({ action: "stop" });
+  assert.equal(stopRes.skill, "autoclicker");
+  assert.equal(stopRes.action, "stop");
+  assert.equal(stopRes.success, true);
+
+  const statusRes = await AutoclickerSkill.execute({ action: "status" });
+  assert.equal(statusRes.skill, "autoclicker");
+  assert.equal(statusRes.action, "status");
+  assert.equal(statusRes.success, true);
+});
+
+test("DirectMessageSkill validates empty input and formats message", async () => {
+  const emptyRes = await DirectMessageSkill.execute({ text: "" });
+  assert.equal(emptyRes.skill, "direct-message");
+  assert.equal(emptyRes.success, false);
+  assert.ok(emptyRes.message.includes("boş olamaz"));
+});
 test("extractSkillPayload parses karpathy, metaskill, and awesome skill blocks", () => {
   const text1 = '```skill:karpathy\n{"action":"check","text":"test"}\n```';
   const p1 = extractSkillPayload(text1);

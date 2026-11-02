@@ -1,5 +1,6 @@
 // Coucou for Windows — app wiring and the commands the island calls.
 
+pub mod autoclicker;
 mod antigravity;
 mod agent_hooks;
 mod agents;
@@ -1121,6 +1122,85 @@ async fn execute_browser_use_action(params: serde_json::Value) -> Result<serde_j
             Ok(serde_json::json!({
                 "success": true,
                 "rawOutput": trimmed
+            }))
+        }
+    }).await.map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+fn autoclicker_launch_or_create(interval_ms: Option<u64>) -> Result<autoclicker::AutoclickerStatus, String> {
+    autoclicker::launch_or_create_autoclicker(interval_ms)
+}
+
+#[tauri::command]
+fn autoclicker_stop() -> Result<bool, String> {
+    autoclicker::stop_autoclicker()
+}
+
+#[tauri::command]
+fn autoclicker_status() -> Result<bool, String> {
+    Ok(autoclicker::is_autoclicker_running())
+}
+
+#[tauri::command]
+async fn discord_send_message(target: Option<String>, message: String, is_group: Option<bool>) -> Result<serde_json::Value, String> {
+    tokio::task::spawn_blocking(move || -> Result<serde_json::Value, String> {
+        let mut script_candidates = Vec::new();
+        if let Ok(cwd) = std::env::current_dir() {
+            for ancestor in cwd.ancestors() {
+                script_candidates.push(ancestor.join("scripts").join("discord_messenger.ps1"));
+                script_candidates.push(ancestor.join("windows").join("scripts").join("discord_messenger.ps1"));
+            }
+        }
+        if let Ok(exe) = std::env::current_exe() {
+            for ancestor in exe.ancestors() {
+                script_candidates.push(ancestor.join("scripts").join("discord_messenger.ps1"));
+                script_candidates.push(ancestor.join("windows").join("scripts").join("discord_messenger.ps1"));
+            }
+        }
+
+        let script = script_candidates.iter().find(|p| p.is_file()).cloned().unwrap_or_else(|| {
+            std::path::PathBuf::from("scripts/discord_messenger.ps1")
+        });
+
+        let mut cmd = std::process::Command::new("powershell");
+        cmd.args(&[
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            script.to_str().unwrap_or("discord_messenger.ps1"),
+            "-Message",
+            &message,
+        ]);
+        if let Some(tgt) = &target {
+            if !tgt.trim().is_empty() {
+                cmd.args(&["-Target", tgt.trim()]);
+            }
+        }
+        if is_group == Some(true) {
+            cmd.arg("-IsGroup");
+        }
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+        }
+
+        let output = cmd.output().map_err(|e| format!("PowerShell Discord çalıştırma hatası: {e}"))?;
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let trimmed = stdout.trim();
+
+        if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(trimmed) {
+            Ok(parsed)
+        } else if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            Err(format!("Discord mesaj gönderimi başarısız: {stderr}"))
+        } else {
+            Ok(serde_json::json!({
+                "success": true,
+                "target": target,
+                "message": message
             }))
         }
     }).await.map_err(|e| e.to_string())?
@@ -2361,40 +2441,41 @@ fn sync_autostart(_app: &AppHandle, enabled: bool) {
         let hkcu = RegKey::predef(HKEY_CURRENT_USER);
 
         if enabled {
-            let is_dev = cfg!(debug_assertions) || cfg!(dev);
             let current = std::env::current_exe().unwrap_or_default();
+            // Prefer release executable if present; otherwise use current running executable
+            let exe = current
+                .ancestors()
+                .nth(2)
+                .map(|d| d.join("release").join("omi.exe"))
+                .filter(|p| p.exists())
+                .unwrap_or(current);
 
-            let exe_to_register = if is_dev {
-                let release_exe = current
-                    .ancestors()
-                    .nth(2)
-                    .map(|d| d.join("release").join("omi.exe"))
-                    .filter(|p| p.exists());
-                if release_exe.is_none() {
-                    log::line("autostart: skipping dev executable registration into Windows startup; build release first");
-                }
-                release_exe
-            } else {
-                Some(current)
-            };
-
-            if let Some(exe) = exe_to_register {
-                if let Ok(run_key) = hkcu.open_subkey_with_flags(AL_REGKEY, KEY_SET_VALUE) {
+            match hkcu.create_subkey(AL_REGKEY) {
+                Ok((run_key, _)) => {
                     let cmd = format!("\"{}\" {}", exe.display(), AUTOSTART_ARG);
-                    let _ = run_key.set_value("Omi", &cmd);
+                    if let Err(e) = run_key.set_value("Omi", &cmd) {
+                        log::line(format!("autostart: registry set_value failed: {e}"));
+                    } else {
+                        log::line(format!("autostart: successfully registered '{cmd}' in Windows startup"));
+                    }
                 }
-                if let Ok(reg) = hkcu.open_subkey_with_flags(TASK_MANAGER_OVERRIDE_REGKEY, KEY_SET_VALUE) {
-                    let _ = reg.set_raw_value(
-                        "Omi",
-                        &RegValue {
-                            vtype: REG_BINARY,
-                            bytes: TASK_MANAGER_OVERRIDE_ENABLED_VALUE.to_vec(),
-                        },
-                    );
+                Err(e) => {
+                    log::line(format!("autostart: failed to create/open HKCU Run key: {e}"));
                 }
+            }
+
+            if let Ok((reg, _)) = hkcu.create_subkey(TASK_MANAGER_OVERRIDE_REGKEY) {
+                let _ = reg.set_raw_value(
+                    "Omi",
+                    &RegValue {
+                        vtype: REG_BINARY,
+                        bytes: TASK_MANAGER_OVERRIDE_ENABLED_VALUE.to_vec(),
+                    },
+                );
             }
         } else if let Ok(run_key) = hkcu.open_subkey_with_flags(AL_REGKEY, KEY_SET_VALUE) {
             let _ = run_key.delete_value("Omi");
+            log::line("autostart: removed 'Omi' from Windows startup");
         }
     }
     #[cfg(not(windows))]
@@ -2511,6 +2592,10 @@ pub fn run() {
             execute_playwright_action,
             execute_browser_use_action,
             save_temp_image,
+            autoclicker_launch_or_create,
+            autoclicker_stop,
+            autoclicker_status,
+            discord_send_message,
             detect_now_playing,
             get_system_stats,
             media_control,
